@@ -1,0 +1,171 @@
+---
+title: "Exercise 11"
+author: "Maya Eldani"
+format: html
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(skimr)
+library(naniar)
+library(MuMIn)
+```
+
+## Load the data
+
+```{r}
+d <- read_tsv("https://raw.githubusercontent.com/difiore/ada-datasets/main/Mammal_lifehistories_v2.txt")
+```
+
+---
+
+## Data Cleaning
+
+```{r}
+# Replace -999 with NA
+d <- d %>%
+  mutate(across(where(is.numeric), ~na_if(., -999)))
+
+# Drop unnecessary columns and rename
+d <- d %>%
+  select(-`litter size`, -refs) %>%
+  rename(
+    `maxlife(mo)` = `max. life(mo)`,
+    `weanmass(g)` = `wean mass(g)`
+  )
+
+# Log transform
+d <- d %>%
+  mutate(across(where(is.numeric), log))
+```
+
+---
+
+## Rename variables for modeling
+
+```{r}
+d <- d %>%
+  rename(
+    body_mass = `mass(g)`,
+    gestation = `gestation(mo)`,
+    weaning = `weaning(mo)`,
+    afr = `AFR(mo)`,
+    maxlife = `maxlife(mo)`,
+    newborn = `newborn(g)`,
+    weanmass = `weanmass(g)`
+  )
+```
+
+---
+
+## Step 4: Regression and Residuals
+
+```{r}
+m_gest <- lm(gestation ~ body_mass, data = d, na.action = na.exclude)
+m_wean <- lm(weaning ~ body_mass, data = d, na.action = na.exclude)
+m_afr  <- lm(afr ~ body_mass, data = d, na.action = na.exclude)
+m_life <- lm(maxlife ~ body_mass, data = d, na.action = na.exclude)
+
+m_newborn  <- lm(newborn ~ body_mass, data = d, na.action = na.exclude)
+m_weanmass <- lm(weanmass ~ body_mass, data = d, na.action = na.exclude)
+
+d <- d %>%
+  mutate(
+    relGest = resid(m_gest),
+    relWean = resid(m_wean),
+    relAFR = resid(m_afr),
+    relLife = resid(m_life),
+    relNewbornMass = resid(m_newborn),
+    relWeaningMass = resid(m_weanmass)
+  )
+```
+
+### Interpretation
+
+These residuals represent life history traits relative to body mass. Positive values indicate higher-than-expected values for a given body size, while negative values indicate lower-than-expected values.
+
+---
+
+## Step 5: Residual Plots
+
+```{r}
+ggplot(d, aes(x = reorder(order, relLife, median, na.rm = TRUE), y = relLife)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal()
+```
+
+```{r}
+ggplot(d, aes(x = reorder(order, relNewbornMass, median, na.rm = TRUE), y = relNewbornMass)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal()
+```
+
+```{r}
+ggplot(d, aes(x = reorder(order, relWeaningMass, median, na.rm = TRUE), y = relWeaningMass)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal()
+```
+
+---
+
+## Step 6: Model Selection (maxlife)
+
+```{r}
+d_life <- d %>%
+  select(maxlife, gestation, newborn, weaning, weanmass, `litters/year`, body_mass) %>%
+  drop_na()
+
+options(na.action = "na.fail")
+
+m_global_life <- lm(maxlife ~ gestation + newborn + weaning + weanmass +
+                      `litters/year` + body_mass,
+                    data = d_life)
+
+ms_life <- dredge(m_global_life)
+
+top_life <- subset(ms_life, delta <= 4)
+nrow(top_life)
+
+models_life <- get.models(ms_life, subset = delta <= 4)
+
+avg_life <- model.avg(models_life)
+
+summary(avg_life)
+confint(avg_life)
+```
+
+### Interpretation
+
+The best model is the one with the lowest AICc value. Models with ΔAICc ≤ 4 are considered competitive. Variables that appear across these models are the most consistent predictors of lifespan.
+
+---
+
+## Step 7: Model Selection (AFR)
+
+```{r}
+d_afr <- d %>%
+  select(afr, gestation, newborn, weaning, weanmass, `litters/year`, body_mass) %>%
+  drop_na()
+
+m_global_afr <- lm(afr ~ gestation + newborn + weaning + weanmass +
+                     `litters/year` + body_mass,
+                   data = d_afr)
+
+ms_afr <- dredge(m_global_afr)
+
+top_afr <- subset(ms_afr, delta <= 4)
+nrow(top_afr)
+
+models_afr <- get.models(ms_afr, subset = delta <= 4)
+
+avg_afr <- model.avg(models_afr)
+
+summary(avg_afr)
+confint(avg_afr)
+```

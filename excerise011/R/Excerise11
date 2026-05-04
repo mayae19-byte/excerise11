@@ -1,0 +1,172 @@
+
+# Load Packages
+
+library(tidyverse)
+library(skimr)
+library(naniar)
+library(MuMIn)
+
+
+
+library(tidyverse)
+library(skimr)
+library(naniar)
+library(MuMIn)
+
+## Load the data
+f <- read_csv("https://raw.githubusercontent.com/difiore/ada-datasets/main/Mammal_lifehistories_v2.txt")
+
+colnames(d)
+glimpse(d)
+
+## Exploratory Data Analysis
+
+skim(d)
+
+### Interpretation
+
+
+  ## Step 1: Replace -999 with NA
+
+d <- d %>%
+  mutate(across(where(is.numeric), ~na_if(., -999)))
+
+
+  ## Step 2: Clean variables
+
+
+d <- d %>%
+  select(-`litter size`, -refs) %>%
+  rename(
+    `maxlife(mo)` = `max. life(mo)`,
+    `weanmass(g)` = `wean mass(g)`
+  )
+
+colnames(d)
+
+  ## Step 3: Log transform numeric variables
+
+d <- d %>%
+  rename(
+    newborn = `newborn(g)`,
+    weanmass = `weanmass(g)`,
+    afr = `AFR(mo)`,
+    maxlife = `maxlife(mo)`
+  )
+
+colnames(d)
+
+  ## Step 4: Residual calculations
+m_gest <- lm(gestation ~ body_mass, data = d, na.action = na.exclude)
+m_wean <- lm(weaning ~ body_mass, data = d, na.action = na.exclude)
+m_afr  <- lm(afr ~ body_mass, data = d, na.action = na.exclude)
+m_life <- lm(maxlife ~ body_mass, data = d, na.action = na.exclude)
+
+m_newborn  <- lm(newborn ~ body_mass, data = d, na.action = na.exclude)
+m_weanmass <- lm(weanmass ~ body_mass, data = d, na.action = na.exclude)
+
+
+
+d <- d %>%
+  mutate(
+    relGest = resid(m_gest),
+    relWean = resid(m_wean),
+    relAFR = resid(m_afr),
+    relLife = resid(m_life),
+    relNewbornMass = resid(m_newborn),
+    relWeaningMass = resid(m_weanmass)
+  )
+
+### Interpretation
+
+## These residuals represent life history traits relative to body mass. Positive values indicate species with higher-than-expected values given their size, while negative values indicate lower-than-expected values. For example, species with positive relLife values live longer than expected for their body mass
+
+ ## Step 5: Plot residuals by Order
+
+  ### Lifespan
+
+
+ggplot(d, aes(x = reorder(order, relLife, median, na.rm = TRUE), y = relLife)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal()
+
+# Newborn Mass
+ggplot(d, aes(x = reorder(order, relNewbornMass, median, na.rm = TRUE), y = relNewbornMass)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal()
+
+
+### Weaning Mass
+
+ggplot(d, aes(x = reorder(order, relWeaningMass, median, na.rm = TRUE), y = relWeaningMass)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal()
+
+## The orders with the highest residual values are those appearing at the top of the plot, indicating species that exceed expectations for that trait relative to body mass.
+
+
+
+  ## Step 6: Model selection (maxlife)
+
+d_life <- d %>%
+  select(maxlife, gestation, newborn, weaning, weanmass, `litters/year`, body_mass) %>%
+  drop_na()
+
+
+
+m_global_life <- lm(maxlife ~ gestation + newborn + weaning + weanmass +
+                      `litters/year` + body_mass,
+                    data = d_life)
+m_global_life <- lm(`maxlife(mo)` ~ `gestation(mo)` + `newborn(g)` +
+                      `weaning(mo)` + `weanmass(g)` +
+                      `litters/year` + `body mass(g)`,
+                    data = d_life)
+
+
+options(na.action = "na.fail")
+
+m_global_life <- lm(maxlife ~ gestation + newborn + weaning + weanmass +
+                      `litters/year` + body_mass,
+                    data = d_life)
+
+ms_life <- dredge(m_global_life)
+
+
+
+top_life <- subset(ms_life, delta <= 4)
+top_life
+nrow(top_life)
+
+top_models_life <- get.models(ms_life, subset = delta <= 4)
+
+coef_names_life <- lapply(top_models_life, function(x) names(coef(x))[-1])
+Reduce(intersect, coef_names_life)
+
+models_life <- get.models(ms_life, subset = delta <= 4)
+models_life <- get.models(ms_life, subset = delta <= 4)
+
+avg_life <- model.avg(models_life)
+summary(avg_life)
+confint(avg_life)
+
+
+  ## Step 7: Model selection (AFR)
+
+
+d_afr <- d %>%
+  select(afr, gestation, newborn, weaning, weanmass, `litters/year`, body_mass) %>%
+  drop_na()
+
+
+m_global_afr <- lm(afr ~ gestation + newborn + weaning + weanmass +
+                     `litters/year` + body_mass,
+                   data = d_afr)
+
+ms_afr <- dredge(m_global_afr)
+top_afr <- subset(ms_afr, delta <= 4)
+nrow(top_afr)
+
+
